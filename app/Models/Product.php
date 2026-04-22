@@ -84,9 +84,6 @@ class Product extends Model
         return $this->belongsTo(Category::class);
     }
 
-    /**
-     * Catégorie de produit (sous-niveau du rayon)
-     */
     public function productCategory()
     {
         return $this->belongsTo(ProductCategory::class, 'product_category_id');
@@ -119,10 +116,10 @@ class Product extends Model
 
     // ==================== SCOPES ====================
 
-    public function scopeActive($q)     { return $q->where('is_active', true); }
-    public function scopeFeatured($q)   { return $q->where('is_featured', true); }
-    public function scopeNew($q)        { return $q->where('is_new', true); }
-    public function scopePremium($q)    { return $q->where('is_premium', true); }
+    public function scopeActive($q)   { return $q->where('is_active', true); }
+    public function scopeFeatured($q) { return $q->where('is_featured', true); }
+    public function scopeNew($q)      { return $q->where('is_new', true); }
+    public function scopePremium($q)  { return $q->where('is_premium', true); }
 
     public function scopeLowStock($q)
     {
@@ -136,17 +133,11 @@ class Product extends Model
         return $q->where('stock', 0)->where('track_stock', true);
     }
 
-    /**
-     * Scope pour filtrer par catégorie de produit
-     */
     public function scopeInProductCategory($q, int $productCategoryId)
     {
         return $q->where('product_category_id', $productCategoryId);
     }
 
-    /**
-     * Scope pour les produits qui expirent bientôt (dans les X jours)
-     */
     public function scopeExpiringSoon($q, $days = 30)
     {
         return $q->whereNotNull('expiry_date')
@@ -154,18 +145,12 @@ class Product extends Model
                  ->where('expiry_date', '>=', Carbon::now());
     }
 
-    /**
-     * Scope pour les produits déjà expirés
-     */
     public function scopeExpired($q)
     {
         return $q->whereNotNull('expiry_date')
                  ->where('expiry_date', '<', Carbon::now());
     }
 
-    /**
-     * Scope pour les produits avec alerte d'expiration activée
-     */
     public function scopeExpiryAlertEnabled($q)
     {
         return $q->where('expiry_alert', true);
@@ -176,7 +161,7 @@ class Product extends Model
     public function getDiscountPercentageAttribute(): ?int
     {
         if (!$this->compare_price || $this->compare_price <= $this->price) return null;
-        return (int)round((($this->compare_price - $this->price) / $this->compare_price) * 100);
+        return (int) round((($this->compare_price - $this->price) / $this->compare_price) * 100);
     }
 
     public function getInStockAttribute(): bool
@@ -189,32 +174,35 @@ class Product extends Model
         return $this->track_stock && $this->stock <= $this->low_stock_threshold && $this->stock > 0;
     }
 
+    /**
+     * ✅ CORRIGÉ — Ne déclenche plus de lazy loading.
+     * Retourne null si la relation n'est pas déjà eager loadée,
+     * au lieu de tenter un chargement implicite interdit.
+     */
     public function getPrimaryImageUrlAttribute(): ?string
     {
-        return $this->primaryImage ? asset('storage/' . $this->primaryImage->path) : null;
+        if (! $this->relationLoaded('primaryImage')) {
+            return null;
+        }
+
+        $image = $this->getRelation('primaryImage');
+
+        return $image ? asset('storage/' . $image->path) : null;
     }
 
-    /**
-     * Vérifier si le produit expire bientôt
-     */
     public function getIsExpiringSoonAttribute(): bool
     {
         if (!$this->expiry_date) return false;
-        return $this->expiry_date <= Carbon::now()->addDays(30) && $this->expiry_date >= Carbon::now();
+        return $this->expiry_date <= Carbon::now()->addDays(30)
+            && $this->expiry_date >= Carbon::now();
     }
 
-    /**
-     * Vérifier si le produit est expiré
-     */
     public function getIsExpiredAttribute(): bool
     {
         if (!$this->expiry_date) return false;
         return $this->expiry_date < Carbon::now();
     }
 
-    /**
-     * Jours restants avant expiration
-     */
     public function getDaysUntilExpiryAttribute(): ?int
     {
         if (!$this->expiry_date) return null;
@@ -229,56 +217,46 @@ class Product extends Model
         if ($this->track_stock) {
             $this->decrement('stock', $qty);
             $this->refresh();
-            if ($this->stock <= 0) $this->update(['admin_label' => 'stock_epuise']);
+            if ($this->stock <= 0) {
+                $this->update(['admin_label' => 'stock_epuise']);
+            }
         }
     }
 
-    /**
-     * Récupérer les produits qui expirent bientôt (statique)
-     */
     public static function getExpiringSoon($limit = 10)
     {
         return self::expiringSoon()->limit($limit)->get();
     }
 
-    /**
-     * Récupérer les produits expirés
-     */
     public static function getExpired($limit = 10)
     {
         return self::expired()->limit($limit)->get();
     }
 
-    /**
-     * Obtenir toutes les alertes pour le dashboard
-     */
     public static function getAlerts(): array
     {
         return [
             'low_stock' => [
-                'count' => self::lowStock()->count(),
-                'items' => self::lowStock()->limit(5)->get(),
+                'count'     => self::lowStock()->count(),
+                'items'     => self::lowStock()->with('primaryImage')->limit(5)->get(),
                 'threshold' => 'low_stock_threshold',
             ],
             'out_of_stock' => [
                 'count' => self::outOfStock()->count(),
-                'items' => self::outOfStock()->limit(5)->get(),
+                'items' => self::outOfStock()->with('primaryImage')->limit(5)->get(),
             ],
             'expiring_soon' => [
                 'count' => self::expiringSoon()->count(),
-                'items' => self::getExpiringSoon(5),
+                'items' => self::expiringSoon()->with('primaryImage')->limit(5)->get(),
                 'days'  => 30,
             ],
             'expired' => [
                 'count' => self::expired()->count(),
-                'items' => self::getExpired(5),
+                'items' => self::expired()->with('primaryImage')->limit(5)->get(),
             ],
         ];
     }
 
-    /**
-     * Mettre à jour l'admin_label basé sur l'état du stock
-     */
     public function updateAdminLabelFromStock(): void
     {
         if (!$this->track_stock) return;

@@ -7,14 +7,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 class Order extends Model
 {
     use HasFactory, SoftDeletes;
+    
     protected $fillable = [
         'order_number','user_id','address_id','status','delivery_type','pickup_store','locker_id',
         'payment_method','payment_status','payment_reference','transaction_id',
         'subtotal','discount_amount','delivery_fee','loyalty_discount','total','coupon_code',
         'loyalty_points_earned','loyalty_points_used','notes','tracking_code',
-        'subscription_id','is_subscription_order','is_priority',
+        'subscription_id','selective_subscription_id','is_subscription_order','is_priority',
         'paid_at','delivered_at','cancelled_at','cancel_reason',
     ];
+    
     protected $casts = [
         'subtotal'=>'float','discount_amount'=>'float','delivery_fee'=>'float',
         'loyalty_discount'=>'float','total'=>'float',
@@ -27,6 +29,7 @@ class Order extends Model
     public function items()        { return $this->hasMany(OrderItem::class); }
     public function delivery()     { return $this->hasOne(Delivery::class); }
     public function subscription() { return $this->belongsTo(Subscription::class); }
+    public function selectiveSubscription() { return $this->belongsTo(SelectiveSubscription::class, 'selective_subscription_id'); }
     public function coupon()       { return $this->belongsTo(Coupon::class, 'coupon_code', 'code'); }
     public function review()       { return $this->hasMany(Review::class); }
 

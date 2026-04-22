@@ -8,6 +8,8 @@ use App\Models\Coupon;
 use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Str;
 
 class CartService
 {
@@ -37,7 +39,13 @@ class CartService
 
     private function getOrCreateGuestCart(Request $request): Cart
     {
-        $sessionId = $request->cookie('cart_session') ?? $request->session()->getId();
+        $sessionId = $request->cookie('cart_session');
+
+        if (!$sessionId) {
+            $sessionId = Str::uuid()->toString();
+            Cookie::queue('cart_session', $sessionId, 60 * 24 * 7);
+        }
+
         return Cart::firstOrCreate(
             ['session_id' => $sessionId],
             ['expires_at' => now()->addDays(7)]
@@ -46,7 +54,11 @@ class CartService
 
     private function getSessionCart(Request $request): ?Cart
     {
-        $sessionId = $request->cookie('cart_session') ?? $request->session()->getId();
+        $sessionId = $request->cookie('cart_session');
+        if (!$sessionId) {
+            return null;
+        }
+
         return Cart::where('session_id', $sessionId)->whereNull('user_id')->first();
     }
 

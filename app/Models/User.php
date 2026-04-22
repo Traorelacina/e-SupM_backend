@@ -85,6 +85,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return true;
     }
 
+    public function selectiveSubscriptions()
+    {
+        return $this->hasMany(SelectiveSubscription::class);
+    }
+
     private function updateLoyaltyLevel(): void
     {
         $level = match(true) {

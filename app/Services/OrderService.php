@@ -8,6 +8,7 @@ use App\Models\CouponUsage;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Models\SelectiveSubscription;
 use Illuminate\Support\Facades\DB;
 
 class OrderService
@@ -197,7 +198,7 @@ class OrderService
     }
 
     /**
-     * Create subscription order
+     * Create subscription order (standard subscription)
      */
     public function createSubscriptionOrder(\App\Models\Subscription $subscription): Order
     {
@@ -249,6 +250,92 @@ class OrderService
             $order->user->notify(new \App\Notifications\SubscriptionOrderCreatedNotification($order));
 
             return $order;
+        });
+    }
+
+    /**
+     * Create an order from a selective subscription
+     * NOUVEAU : pour les abonnements sélectifs personnalisés
+     */
+    public function createSelectiveSubscriptionOrder(SelectiveSubscription $subscription): Order
+    {
+        return DB::transaction(function () use ($subscription) {
+            // Récupérer les articles actifs
+            $activeItems = $subscription->items()
+                ->where('is_active', true)
+                ->with('product')
+                ->get();
+
+            if ($activeItems->isEmpty()) {
+                throw new \Exception('Aucun article actif dans cet abonnement');
+            }
+
+            // Vérifier les stocks
+            foreach ($activeItems as $item) {
+                if (!$item->product) {
+                    throw new \Exception("Produit #{$item->product_id} introuvable");
+                }
+                if ($item->product->stock < $item->quantity) {
+                    throw new \Exception("Stock insuffisant pour le produit: {$item->product->name}");
+                }
+            }
+
+            // Calculer les totaux
+            $subtotal = $activeItems->sum(fn($item) => $item->price * $item->quantity);
+            $discountAmount = $subtotal * ($subscription->discount_percent / 100);
+            $total = $subtotal - $discountAmount;
+
+            // Créer la commande
+            $order = Order::create([
+                'user_id'               => $subscription->user_id,
+                'address_id'            => $subscription->address_id,
+                'delivery_type'         => $subscription->delivery_type,
+                'status'                => 'confirmed',
+                'payment_method'        => $subscription->payment_method,
+                'payment_status'        => $subscription->payment_method === 'auto' ? 'pending' : 'pending_manual',
+                'subtotal'              => $subtotal,
+                'discount_amount'       => $discountAmount,
+                'delivery_fee'          => 0,
+                'total'                 => $total,
+                'selective_subscription_id' => $subscription->id,
+                'notes'                 => "Commande générée depuis l'abonnement sélectif #{$subscription->id}",
+                'is_priority'           => true,
+            ]);
+
+            // Créer les articles de la commande
+            foreach ($activeItems as $item) {
+                OrderItem::create([
+                    'order_id'      => $order->id,
+                    'product_id'    => $item->product_id,
+                    'product_name'  => $item->product->name,
+                    'product_sku'   => $item->product->sku,
+                    'product_image' => $item->product->primary_image_url,
+                    'unit_price'    => $item->price,
+                    'compare_price' => $item->product->compare_price,
+                    'quantity'      => $item->quantity,
+                    'total'         => $item->price * $item->quantity,
+                ]);
+
+                // Réduire le stock
+                $item->product->decrement('stock', $item->quantity);
+            }
+
+            // Mettre à jour la prochaine date de livraison
+            $subscription->update([
+                'next_delivery_at' => $subscription->computeNextDelivery(),
+            ]);
+
+            // Notifier l'utilisateur
+            try {
+                $order->user->notify(new \App\Notifications\OrderConfirmedNotification($order));
+            } catch (\Exception $e) {
+                // Silencieux - ne pas bloquer la création si la notification échoue
+            }
+
+            // Mettre à jour les badges
+            $this->loyaltyService->checkAndAwardBadges($subscription->user);
+
+            return $order->fresh()->load(['items', 'address']);
         });
     }
 

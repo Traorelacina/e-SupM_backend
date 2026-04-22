@@ -38,6 +38,10 @@ use App\Http\Controllers\Admin\AdminRecipeController;
 use App\Http\Controllers\Admin\AdminStatsController;
 use App\Http\Controllers\Admin\AdminDeliveryController;
 use App\Http\Controllers\Admin\AdminCouponController;
+use App\Http\Controllers\Admin\AdminFoodBoxController;
+use App\Http\Controllers\PublicFoodBoxController;
+use App\Http\Controllers\SelectiveSubscriptionController;
+use App\Http\Controllers\Admin\AdminSelectiveSubscriptionController;
 
 /*
 |--------------------------------------------------------------------------
@@ -56,12 +60,10 @@ Route::prefix('auth')->group(function () {
     Route::post('/verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])
         ->name('verification.verify');
 
-    // Social Auth
     Route::get('/social/{provider}', [SocialAuthController::class, 'redirect']);
     Route::get('/social/{provider}/callback', [SocialAuthController::class, 'callback']);
     Route::post('/social/token', [SocialAuthController::class, 'loginWithToken']);
 
-    // 2FA
     Route::post('/two-factor/verify', [AuthController::class, 'verifyTwoFactor']);
 });
 
@@ -107,6 +109,19 @@ Route::get('/games/{id}', [GameController::class, 'show']);
 Route::get('/products/{id}/reviews', [ReviewController::class, 'index']);
 
 Route::get('/charity/vouchers/check/{code}', [CharityController::class, 'checkVoucher']);
+
+Route::prefix('food-boxes')->group(function () {
+    Route::get('/', [PublicFoodBoxController::class, 'index']);
+    Route::get('/featured', [PublicFoodBoxController::class, 'featured']);
+    Route::get('/search', [PublicFoodBoxController::class, 'search']);
+    Route::get('/frequencies', [PublicFoodBoxController::class, 'frequencies']);
+    Route::get('/{identifier}', [PublicFoodBoxController::class, 'show']);
+    Route::get('/{id}/availability', [PublicFoodBoxController::class, 'checkAvailabilityEndpoint']);
+    
+    if (config('app.debug')) {
+        Route::post('/clear-cache', [PublicFoodBoxController::class, 'clearCache']);
+    }
+});
 
 Route::prefix('cart')->group(function () {
     Route::get('/', [CartController::class, 'index']);
@@ -197,9 +212,35 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::post('/suggestions', [SuggestionController::class, 'store']);
 
-    Route::post('/delegate-shopping', [\App\Http\Controllers\DelegateShoppingController::class, 'store']);
-    Route::get('/delegate-shopping', [\App\Http\Controllers\DelegateShoppingController::class, 'index']);
-    Route::get('/delegate-shopping/{id}', [\App\Http\Controllers\DelegateShoppingController::class, 'show']);
+    Route::post('/delegate-shopping', [App\Http\Controllers\DelegateShoppingController::class, 'store']);
+    Route::get('/delegate-shopping', [App\Http\Controllers\DelegateShoppingController::class, 'index']);
+    Route::get('/delegate-shopping/{id}', [App\Http\Controllers\DelegateShoppingController::class, 'show']);
+
+    // ========================
+    // SELECTIVE SUBSCRIPTIONS (Abonnements sélectifs)
+    // ========================
+    Route::prefix('selective-subscriptions')->group(function () {
+        // Routes utilisateur
+        Route::get('/', [SelectiveSubscriptionController::class, 'index']);
+        Route::post('/', [SelectiveSubscriptionController::class, 'store']);
+        Route::get('/{id}', [SelectiveSubscriptionController::class, 'show']);
+        Route::put('/{id}', [SelectiveSubscriptionController::class, 'update']);
+        
+        // Gestion des articles
+        Route::post('/{id}/items', [SelectiveSubscriptionController::class, 'addItem']);
+        Route::put('/{id}/items/{itemId}', [SelectiveSubscriptionController::class, 'updateItem']);
+        Route::patch('/{id}/items/{itemId}/toggle', [SelectiveSubscriptionController::class, 'toggleItem']);
+        Route::delete('/{id}/items/{itemId}', [SelectiveSubscriptionController::class, 'removeItem']);
+        Route::put('/{id}/sync-items', [SelectiveSubscriptionController::class, 'syncItems']);
+        
+        // Gestion du statut
+        Route::post('/{id}/suspend', [SelectiveSubscriptionController::class, 'suspend']);
+        Route::post('/{id}/resume', [SelectiveSubscriptionController::class, 'resume']);
+        Route::delete('/{id}', [SelectiveSubscriptionController::class, 'cancel']);
+        
+        // Historique
+        Route::get('/{id}/history', [SelectiveSubscriptionController::class, 'history']);
+    });
 });
 
 // ========================
@@ -242,139 +283,212 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::put('/users/{id}/role', [AdminUserController::class, 'updateRole']);
     Route::get('/users/{id}/orders', [AdminUserController::class, 'userOrders']);
     Route::post('/users/{id}/loyalty/add', [AdminUserController::class, 'addLoyaltyPoints']);
-  Route::get('/categories/tree', [AdminCategoryController::class, 'tree']);
-    Route::get('/categories', [AdminCategoryController::class, 'index']);
-    Route::get('/categories/{id}', [AdminCategoryController::class, 'showCategory']);
-    Route::post('/categories', [AdminCategoryController::class, 'storeCategory']);  // Changé de 'store' à 'storeCategory'
-    Route::post('/categories/{id}', [AdminCategoryController::class, 'updateCategory']); // Changé de 'update' à 'updateCategory'
-    Route::delete('/categories/{id}', [AdminCategoryController::class, 'destroyCategory']); // Changé de 'destroy' à 'destroyCategory'
-    Route::post('/categories/{id}/toggle', [AdminCategoryController::class, 'toggleCategory']); // Changé de 'toggle' à 'toggleCategory'
-    Route::put('/categories/{id}/reorder', [AdminCategoryController::class, 'reorderCategory']); // Changé de 'reorder' à 'reorderCategory'
-    
-      Route::get('/categories/tree', [AdminCategoryController::class, 'tree']);
-    Route::get('/categories', [AdminCategoryController::class, 'index']);
-    Route::get('/categories/{id}', [AdminCategoryController::class, 'show']);
-    Route::post('/categories', [AdminCategoryController::class, 'store']);           
-    Route::post('/categories/{id}', [AdminCategoryController::class, 'update']);    
-    Route::delete('/categories/{id}', [AdminCategoryController::class, 'destroy']); 
-    Route::post('/categories/{id}/toggle', [AdminCategoryController::class, 'toggle']); 
-    Route::put('/categories/{id}/reorder', [AdminCategoryController::class, 'reorder']);
-    
-    // ==================== CATÉGORIES DE PRODUITS (ProductCategories) ====================
-    Route::get('/product-categories', [AdminCategoryController::class, 'productCategories']);
-    Route::get('/product-categories/grouped', [AdminCategoryController::class, 'grouped']);
-    Route::post('/product-categories', [AdminCategoryController::class, 'storeProductCategory']);
-    Route::post('/product-categories/{id}', [AdminCategoryController::class, 'updateProductCategory']);
-    Route::delete('/product-categories/{id}', [AdminCategoryController::class, 'destroyProductCategory']);
-    Route::post('/product-categories/{id}/toggle', [AdminCategoryController::class, 'toggleProductCategory']);
 
-    // ── Products ─────────────────────────────────────────────────────────────
-    // Routes nommées AVANT apiResource
-    Route::get('/products/low-stock', [AdminProductController::class, 'lowStock']);
-    Route::get('/products/out-of-stock', [AdminProductController::class, 'outOfStock']);
-    Route::get('/products/export', [AdminProductController::class, 'export']);
-    Route::post('/products/import', [AdminProductController::class, 'import']);
-    Route::apiResource('/products', AdminProductController::class);
-    Route::post('/products/{id}/toggle', [AdminProductController::class, 'toggle']);
-    Route::post('/products/{id}/duplicate', [AdminProductController::class, 'duplicate']);
-    Route::post('/products/{id}/images', [AdminProductController::class, 'uploadImages']);
-    Route::delete('/products/{id}/images/{imageId}', [AdminProductController::class, 'deleteImage']);
-    Route::put('/products/{id}/stock', [AdminProductController::class, 'updateStock']);
-    Route::post('/products/{id}/label', [AdminProductController::class, 'setLabel']);
+    // Categories
+    Route::prefix('categories')->group(function () {
+        Route::get('/tree', [AdminCategoryController::class, 'tree']);
+        Route::get('/', [AdminCategoryController::class, 'index']);
+        Route::get('/{id}', [AdminCategoryController::class, 'show']);
+        Route::post('/', [AdminCategoryController::class, 'store']);
+        Route::put('/{id}', [AdminCategoryController::class, 'update']);
+        Route::delete('/{id}', [AdminCategoryController::class, 'destroy']);
+        Route::post('/{id}/toggle', [AdminCategoryController::class, 'toggle']);
+        Route::put('/{id}/reorder', [AdminCategoryController::class, 'reorder']);
+    });
+
+    // Product Categories
+    Route::prefix('product-categories')->group(function () {
+        Route::get('/', [AdminCategoryController::class, 'productCategories']);
+        Route::get('/grouped', [AdminCategoryController::class, 'grouped']);
+        Route::post('/', [AdminCategoryController::class, 'storeProductCategory']);
+        Route::put('/{id}', [AdminCategoryController::class, 'updateProductCategory']);
+        Route::delete('/{id}', [AdminCategoryController::class, 'destroyProductCategory']);
+        Route::post('/{id}/toggle', [AdminCategoryController::class, 'toggleProductCategory']);
+    });
+
+    // Products
+    Route::prefix('products')->group(function () {
+        Route::get('/low-stock', [AdminProductController::class, 'lowStock']);
+        Route::get('/out-of-stock', [AdminProductController::class, 'outOfStock']);
+        Route::get('/export', [AdminProductController::class, 'export']);
+        Route::post('/import', [AdminProductController::class, 'import']);
+        Route::get('/', [AdminProductController::class, 'index']);
+        Route::post('/', [AdminProductController::class, 'store']);
+        Route::get('/{id}', [AdminProductController::class, 'show']);
+        Route::put('/{id}', [AdminProductController::class, 'update']);
+        Route::delete('/{id}', [AdminProductController::class, 'destroy']);
+        Route::post('/{id}/toggle', [AdminProductController::class, 'toggle']);
+        Route::post('/{id}/duplicate', [AdminProductController::class, 'duplicate']);
+        Route::post('/{id}/images', [AdminProductController::class, 'uploadImages']);
+        Route::delete('/{id}/images/{imageId}', [AdminProductController::class, 'deleteImage']);
+        Route::put('/{id}/stock', [AdminProductController::class, 'updateStock']);
+        Route::post('/{id}/label', [AdminProductController::class, 'setLabel']);
+    });
 
     // Orders
-    Route::get('/orders/export', [AdminOrderController::class, 'export']);
-    Route::get('/orders', [AdminOrderController::class, 'index']);
-    Route::get('/orders/{id}', [AdminOrderController::class, 'show']);
-    Route::put('/orders/{id}/status', [AdminOrderController::class, 'updateStatus']);
-    Route::post('/orders/{id}/assign-driver', [AdminOrderController::class, 'assignDriver']);
-    Route::post('/orders/{id}/refund', [AdminOrderController::class, 'refund']);
+    Route::prefix('orders')->group(function () {
+        Route::get('/export', [AdminOrderController::class, 'export']);
+        Route::get('/', [AdminOrderController::class, 'index']);
+        Route::get('/{id}', [AdminOrderController::class, 'show']);
+        Route::put('/{id}/status', [AdminOrderController::class, 'updateStatus']);
+        Route::post('/{id}/assign-driver', [AdminOrderController::class, 'assignDriver']);
+        Route::post('/{id}/refund', [AdminOrderController::class, 'refund']);
+    });
 
     // Subscriptions
-    Route::get('/subscriptions/upcoming', [AdminSubscriptionController::class, 'upcoming']);
-    Route::get('/subscriptions', [AdminSubscriptionController::class, 'index']);
-    Route::get('/subscriptions/{id}', [AdminSubscriptionController::class, 'show']);
-    Route::put('/subscriptions/{id}', [AdminSubscriptionController::class, 'update']);
-    Route::post('/subscriptions/{id}/suspend', [AdminSubscriptionController::class, 'suspend']);
-    Route::post('/subscriptions/{id}/process', [AdminSubscriptionController::class, 'processManually']);
+    Route::prefix('subscriptions')->group(function () {
+        Route::get('/upcoming', [AdminSubscriptionController::class, 'upcoming']);
+        Route::get('/', [AdminSubscriptionController::class, 'index']);
+        Route::get('/{id}', [AdminSubscriptionController::class, 'show']);
+        Route::put('/{id}', [AdminSubscriptionController::class, 'update']);
+        Route::post('/{id}/suspend', [AdminSubscriptionController::class, 'suspend']);
+        Route::post('/{id}/process', [AdminSubscriptionController::class, 'processManually']);
+    });
+
+    // ========================
+    // ADMIN SELECTIVE SUBSCRIPTIONS
+    // ========================
+    Route::prefix('selective-subscriptions')->group(function () {
+        Route::get('/', [AdminSelectiveSubscriptionController::class, 'index']);
+        Route::get('/upcoming', [AdminSelectiveSubscriptionController::class, 'upcoming']);
+        Route::get('/stats', [AdminSelectiveSubscriptionController::class, 'stats']);
+        Route::get('/{id}', [AdminSelectiveSubscriptionController::class, 'show']);
+        Route::put('/{id}', [AdminSelectiveSubscriptionController::class, 'update']);
+        Route::post('/{id}/suspend', [AdminSelectiveSubscriptionController::class, 'suspend']);
+        Route::post('/{id}/resume', [AdminSelectiveSubscriptionController::class, 'resume']);
+        Route::post('/{id}/process', [AdminSelectiveSubscriptionController::class, 'processManually']);
+    });
 
     // Promotions
     Route::apiResource('/promotions', AdminPromotionController::class);
     Route::post('/promotions/{id}/toggle', [AdminPromotionController::class, 'toggle']);
 
     // Coupons
-    Route::apiResource('/coupons', AdminCouponController::class);
-    Route::post('/coupons/generate-bulk', [AdminCouponController::class, 'generateBulk']);
-    Route::get('/coupons/{id}/usages', [AdminCouponController::class, 'usages']);
+    Route::prefix('coupons')->group(function () {
+        Route::get('/', [AdminCouponController::class, 'index']);
+        Route::post('/', [AdminCouponController::class, 'store']);
+        Route::post('/generate-bulk', [AdminCouponController::class, 'generateBulk']);
+        Route::get('/{id}', [AdminCouponController::class, 'show']);
+        Route::put('/{id}', [AdminCouponController::class, 'update']);
+        Route::delete('/{id}', [AdminCouponController::class, 'destroy']);
+        Route::get('/{id}/usages', [AdminCouponController::class, 'usages']);
+    });
 
     // Games
-    Route::get('/games', [AdminGameController::class, 'index']);
-    Route::post('/games', [AdminGameController::class, 'store']);
-    Route::get('/games/{id}', [AdminGameController::class, 'show']);
-    Route::put('/games/{id}', [AdminGameController::class, 'update']);
-    Route::delete('/games/{id}', [AdminGameController::class, 'destroy']);
-    Route::post('/games/{id}/activate', [AdminGameController::class, 'activate']);
-    Route::post('/games/{id}/close', [AdminGameController::class, 'close']);
-    Route::get('/games/{id}/participants', [AdminGameController::class, 'participants']);
-    Route::post('/games/{id}/select-winners', [AdminGameController::class, 'selectWinners']);
-    Route::post('/games/{id}/award', [AdminGameController::class, 'awardWinner']);
+    Route::prefix('games')->group(function () {
+        Route::get('/', [AdminGameController::class, 'index']);
+        Route::post('/', [AdminGameController::class, 'store']);
+        Route::get('/{id}', [AdminGameController::class, 'show']);
+        Route::put('/{id}', [AdminGameController::class, 'update']);
+        Route::delete('/{id}', [AdminGameController::class, 'destroy']);
+        Route::post('/{id}/activate', [AdminGameController::class, 'activate']);
+        Route::post('/{id}/close', [AdminGameController::class, 'close']);
+        Route::get('/{id}/participants', [AdminGameController::class, 'participants']);
+        Route::post('/{id}/select-winners', [AdminGameController::class, 'selectWinners']);
+        Route::post('/{id}/award', [AdminGameController::class, 'awardWinner']);
+    });
 
     // Partners
-    Route::get('/partners', [AdminPartnerController::class, 'index']);
-    Route::get('/partners/{id}', [AdminPartnerController::class, 'show']);
-    Route::put('/partners/{id}', [AdminPartnerController::class, 'update']);
-    Route::post('/partners/{id}/approve', [AdminPartnerController::class, 'approve']);
-    Route::post('/partners/{id}/reject', [AdminPartnerController::class, 'reject']);
-    Route::delete('/partners/{id}', [AdminPartnerController::class, 'destroy']);
+    Route::prefix('partners')->group(function () {
+        Route::get('/', [AdminPartnerController::class, 'index']);
+        Route::get('/{id}', [AdminPartnerController::class, 'show']);
+        Route::put('/{id}', [AdminPartnerController::class, 'update']);
+        Route::post('/{id}/approve', [AdminPartnerController::class, 'approve']);
+        Route::post('/{id}/reject', [AdminPartnerController::class, 'reject']);
+        Route::delete('/{id}', [AdminPartnerController::class, 'destroy']);
+    });
 
     // Advertisements
-    Route::get('/advertisements/stats', [AdminAdvertisementController::class, 'stats']);
-    Route::apiResource('/advertisements', AdminAdvertisementController::class);
-    Route::post('/advertisements/{id}/toggle', [AdminAdvertisementController::class, 'toggle']);
+    Route::prefix('advertisements')->group(function () {
+        Route::get('/stats', [AdminAdvertisementController::class, 'stats']);
+        Route::get('/', [AdminAdvertisementController::class, 'index']);
+        Route::post('/', [AdminAdvertisementController::class, 'store']);
+        Route::get('/{id}', [AdminAdvertisementController::class, 'show']);
+        Route::put('/{id}', [AdminAdvertisementController::class, 'update']);
+        Route::delete('/{id}', [AdminAdvertisementController::class, 'destroy']);
+        Route::post('/{id}/toggle', [AdminAdvertisementController::class, 'toggle']);
+    });
 
-    // Charity
-    Route::get('/charity/donations', [AdminCharityController::class, 'donations']);
-    Route::get('/charity/vouchers', [AdminCharityController::class, 'vouchers']);
-    Route::put('/charity/donations/{id}/status', [AdminCharityController::class, 'updateStatus']);
-    Route::get('/charity/impact', [AdminCharityController::class, 'impact']);
+    // Charity (CORRECTION : Routes complètes)
+    Route::prefix('charity')->group(function () {
+        // Dashboard
+        Route::get('/dashboard', [AdminCharityController::class, 'dashboard']);
+        
+        // Donations
+        Route::get('/donations', [AdminCharityController::class, 'donations']);
+        Route::get('/donations/{id}', [AdminCharityController::class, 'showDonation']);
+        Route::put('/donations/{id}/status', [AdminCharityController::class, 'updateStatus']);
+        Route::post('/donations/bulk-update', [AdminCharityController::class, 'bulkUpdateStatus']);
+        Route::post('/donations/{id}/scratch-card', [AdminCharityController::class, 'triggerScratchCard']);
+        Route::get('/donations/export', [AdminCharityController::class, 'exportDonations']);
+        
+        // Vouchers (Bons alimentaires)
+        Route::get('/vouchers', [AdminCharityController::class, 'vouchers']);
+        Route::post('/vouchers', [AdminCharityController::class, 'createVoucher']);
+        Route::post('/vouchers/{code}/use', [AdminCharityController::class, 'useVoucher']);
+    });
 
     // Recipes
     Route::apiResource('/recipes', AdminRecipeController::class);
     Route::post('/recipes/{id}/publish', [AdminRecipeController::class, 'publish']);
 
     // Suggestions
-    Route::get('/suggestions', [SuggestionController::class, 'adminIndex']);
-    Route::put('/suggestions/{id}/status', [SuggestionController::class, 'updateStatus']);
-    Route::post('/suggestions/{id}/respond', [SuggestionController::class, 'respond']);
+    Route::prefix('suggestions')->group(function () {
+        Route::get('/', [SuggestionController::class, 'adminIndex']);
+        Route::put('/{id}/status', [SuggestionController::class, 'updateStatus']);
+        Route::post('/{id}/respond', [SuggestionController::class, 'respond']);
+    });
 
     // Deliveries
-    Route::get('/drivers/available', [AdminDeliveryController::class, 'availableDrivers']);
-    Route::get('/deliveries', [AdminDeliveryController::class, 'index']);
-    Route::get('/deliveries/{id}', [AdminDeliveryController::class, 'show']);
-    Route::put('/deliveries/{id}/status', [AdminDeliveryController::class, 'updateStatus']);
-    Route::post('/deliveries/{id}/assign', [AdminDeliveryController::class, 'assignDriver']);
+    Route::prefix('deliveries')->group(function () {
+        Route::get('/drivers/available', [AdminDeliveryController::class, 'availableDrivers']);
+        Route::get('/', [AdminDeliveryController::class, 'index']);
+        Route::get('/{id}', [AdminDeliveryController::class, 'show']);
+        Route::put('/{id}/status', [AdminDeliveryController::class, 'updateStatus']);
+        Route::post('/{id}/assign', [AdminDeliveryController::class, 'assignDriver']);
+    });
 
     // Notifications
-    Route::post('/notifications/send', [NotificationController::class, 'adminSend']);
-    Route::post('/notifications/broadcast', [NotificationController::class, 'broadcast']);
+    Route::prefix('notifications')->group(function () {
+        Route::post('/send', [NotificationController::class, 'adminSend']);
+        Route::post('/broadcast', [NotificationController::class, 'broadcast']);
+    });
 
     // Delegate shopping
-    Route::get('/delegate-shopping', [\App\Http\Controllers\DelegateShoppingController::class, 'adminIndex']);
-    Route::put('/delegate-shopping/{id}/status', [\App\Http\Controllers\DelegateShoppingController::class, 'updateStatus']);
+    Route::prefix('delegate-shopping')->group(function () {
+        Route::get('/', [App\Http\Controllers\DelegateShoppingController::class, 'adminIndex']);
+        Route::put('/{id}/status', [App\Http\Controllers\DelegateShoppingController::class, 'updateStatus']);
+    });
 
     // Badges
-    Route::apiResource('/badges', \App\Http\Controllers\Admin\AdminBadgeController::class);
-    Route::post('/badges/{id}/award/{userId}', [\App\Http\Controllers\Admin\AdminBadgeController::class, 'award']);
+    Route::apiResource('/badges', App\Http\Controllers\Admin\AdminBadgeController::class);
+    Route::post('/badges/{id}/award/{userId}', [App\Http\Controllers\Admin\AdminBadgeController::class, 'award']);
 
     // Newsletters
-    Route::get('/newsletter/subscribers', [\App\Http\Controllers\Admin\AdminNewsletterController::class, 'index']);
-    Route::post('/newsletter/send', [\App\Http\Controllers\Admin\AdminNewsletterController::class, 'send']);
+    Route::prefix('newsletter')->group(function () {
+        Route::get('/subscribers', [App\Http\Controllers\Admin\AdminNewsletterController::class, 'index']);
+        Route::post('/send', [App\Http\Controllers\Admin\AdminNewsletterController::class, 'send']);
+    });
+
+    // Food Boxes
+    Route::prefix('food-boxes')->group(function () {
+        Route::get('/products/search', [AdminFoodBoxController::class, 'searchProducts']);
+        Route::get('/', [AdminFoodBoxController::class, 'index']);
+        Route::post('/', [AdminFoodBoxController::class, 'store']);
+        Route::get('/{id}', [AdminFoodBoxController::class, 'show']);
+        Route::put('/{id}', [AdminFoodBoxController::class, 'update']);
+        Route::delete('/{id}', [AdminFoodBoxController::class, 'destroy']);
+        Route::post('/{id}/toggle', [AdminFoodBoxController::class, 'toggle']);
+        Route::post('/{id}/duplicate', [AdminFoodBoxController::class, 'duplicate']);
+        Route::post('/{id}/items', [AdminFoodBoxController::class, 'addItem']);
+        Route::delete('/{id}/items/{itemId}', [AdminFoodBoxController::class, 'removeItem']);
+    });
 });
 
 // ========================
 // PAYMENT WEBHOOKS (no auth)
 // ========================
 Route::prefix('webhooks')->group(function () {
-    Route::post('/cinetpay', [\App\Http\Controllers\PaymentController::class, 'cinetpayWebhook']);
-    Route::post('/paydunya', [\App\Http\Controllers\PaymentController::class, 'paydunyaWebhook']);
+    Route::post('/cinetpay', [App\Http\Controllers\PaymentController::class, 'cinetpayWebhook']);
+    Route::post('/paydunya', [App\Http\Controllers\PaymentController::class, 'paydunyaWebhook']);
 });
