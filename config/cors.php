@@ -8,5 +8,5 @@ return [
     'allowed_headers' => ['*'],
     'exposed_headers' => [],
     'max_age' => 0,
-    'supports_credentials' => false, // ✅ CRUCIAL - doit être true
+    'supports_credentials' => true,
 ];

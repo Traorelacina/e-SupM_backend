@@ -1,21 +1,78 @@
 <?php
+
 namespace App\Models;
+
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
 class Cart extends Model
 {
-    protected $fillable = ['user_id','session_id','coupon_code','coupon_discount','expires_at'];
-    protected $casts = ['coupon_discount'=>'float','expires_at'=>'datetime'];
+    protected $fillable = [
+        'user_id',
+        'session_id',
+        'coupon_code',
+        'coupon_discount',
+        'expires_at',
+    ];
 
-    public function user()  { return $this->belongsTo(User::class); }
-    public function items() { return $this->hasMany(CartItem::class); }
+    protected $casts = [
+        'coupon_discount' => 'float',
+        'expires_at'      => 'datetime',
+        'created_at'      => 'datetime',
+        'updated_at'      => 'datetime',
+    ];
 
-    public function getSubtotalAttribute(): float {
-        return $this->items->sum(fn($i) => $i->price * $i->quantity);
+    // ── Relations ────────────────────────────────────────────────────────────
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
-    public function getTotalAttribute(): float {
-        return max(0, $this->subtotal - $this->coupon_discount);
+
+    public function items(): HasMany
+    {
+        return $this->hasMany(CartItem::class);
     }
-    public function getTotalItemsAttribute(): int {
-        return $this->items->sum('quantity');
+
+    // ── Accesseurs ───────────────────────────────────────────────────────────
+
+    /**
+     * Calcule le sous-total du panier (somme des line_total des items).
+     * Utilise price * quantity pour être sûr même si line_total n'est pas chargé.
+     */
+    public function getSubtotalAttribute(): float
+    {
+        return (float) $this->items->sum(fn($i) => (float) $i->price * (int) $i->quantity);
+    }
+
+    /**
+     * Total = subtotal - coupon_discount (jamais négatif).
+     * NOTE : la livraison est calculée séparément dans CartService::getCartSummary().
+     */
+    public function getTotalAttribute(): float
+    {
+        return (float) max(0, $this->subtotal - (float) ($this->coupon_discount ?? 0));
+    }
+
+    /**
+     * Nombre total d'articles (somme des quantités).
+     */
+    public function getTotalItemsAttribute(): int
+    {
+        return (int) $this->items->sum('quantity');
+    }
+
+    // ── Scopes ───────────────────────────────────────────────────────────────
+
+    /**
+     * Paniers non expirés.
+     */
+    public function scopeActive($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('expires_at')
+              ->orWhere('expires_at', '>', now());
+        });
     }
 }

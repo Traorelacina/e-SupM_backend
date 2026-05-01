@@ -42,13 +42,8 @@ use App\Http\Controllers\Admin\AdminFoodBoxController;
 use App\Http\Controllers\PublicFoodBoxController;
 use App\Http\Controllers\SelectiveSubscriptionController;
 use App\Http\Controllers\Admin\AdminSelectiveSubscriptionController;
-
-/*
-|--------------------------------------------------------------------------
-| API Routes - e-Sup'M Backend
-|--------------------------------------------------------------------------
-*/
-
+use App\Http\Controllers\Admin\ConseilController as AdminConseilController;
+use App\Http\Controllers\ConseilController as PublicConseilController;
 // ========================
 // AUTH ROUTES (Public)
 // ========================
@@ -110,6 +105,7 @@ Route::get('/products/{id}/reviews', [ReviewController::class, 'index']);
 
 Route::get('/charity/vouchers/check/{code}', [CharityController::class, 'checkVoucher']);
 
+// Food Boxes (public)
 Route::prefix('food-boxes')->group(function () {
     Route::get('/', [PublicFoodBoxController::class, 'index']);
     Route::get('/featured', [PublicFoodBoxController::class, 'featured']);
@@ -117,12 +113,13 @@ Route::prefix('food-boxes')->group(function () {
     Route::get('/frequencies', [PublicFoodBoxController::class, 'frequencies']);
     Route::get('/{identifier}', [PublicFoodBoxController::class, 'show']);
     Route::get('/{id}/availability', [PublicFoodBoxController::class, 'checkAvailabilityEndpoint']);
-    
+
     if (config('app.debug')) {
         Route::post('/clear-cache', [PublicFoodBoxController::class, 'clearCache']);
     }
 });
 
+// Cart (public — basé sur session/cookie)
 Route::prefix('cart')->group(function () {
     Route::get('/', [CartController::class, 'index']);
     Route::post('/add', [CartController::class, 'add']);
@@ -138,6 +135,7 @@ Route::prefix('cart')->group(function () {
 // ========================
 Route::middleware('auth:sanctum')->group(function () {
 
+    // Auth
     Route::post('/auth/logout', [AuthController::class, 'logout']);
     Route::get('/auth/me', [AuthController::class, 'me']);
     Route::post('/auth/refresh', [AuthController::class, 'refresh']);
@@ -145,18 +143,21 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/auth/two-factor/enable', [AuthController::class, 'enableTwoFactor']);
     Route::post('/auth/two-factor/disable', [AuthController::class, 'disableTwoFactor']);
 
+    // Profile
     Route::get('/profile', [ProfileController::class, 'show']);
     Route::put('/profile', [ProfileController::class, 'update']);
     Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar']);
     Route::put('/profile/password', [ProfileController::class, 'changePassword']);
     Route::delete('/profile', [ProfileController::class, 'deleteAccount']);
 
+    // Addresses — toutes les méthodes dans ProfileController
     Route::get('/addresses', [ProfileController::class, 'addresses']);
     Route::post('/addresses', [ProfileController::class, 'storeAddress']);
     Route::put('/addresses/{id}', [ProfileController::class, 'updateAddress']);
-    Route::delete('/addresses/{id}', [ProfileController::class, 'deleteAddress']);
+    Route::delete('/addresses/{id}', [ProfileController::class, 'destroyAddress']); // ← corrigé
     Route::put('/addresses/{id}/default', [ProfileController::class, 'setDefaultAddress']);
 
+    // Orders
     Route::get('/orders', [OrderController::class, 'index']);
     Route::post('/orders', [OrderController::class, 'store']);
     Route::get('/orders/{id}', [OrderController::class, 'show']);
@@ -165,6 +166,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/deliveries/{orderId}/track', [DeliveryController::class, 'track']);
 
+    // Subscriptions
     Route::get('/subscriptions', [SubscriptionController::class, 'index']);
     Route::post('/subscriptions', [SubscriptionController::class, 'store']);
     Route::get('/subscriptions/{id}', [SubscriptionController::class, 'show']);
@@ -174,12 +176,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/subscriptions/{id}', [SubscriptionController::class, 'cancel']);
     Route::get('/subscriptions/{id}/history', [SubscriptionController::class, 'history']);
 
+    // Loyalty
     Route::get('/loyalty', [LoyaltyController::class, 'dashboard']);
     Route::get('/loyalty/transactions', [LoyaltyController::class, 'transactions']);
     Route::get('/loyalty/badges', [LoyaltyController::class, 'badges']);
     Route::post('/loyalty/redeem', [LoyaltyController::class, 'redeem']);
     Route::get('/loyalty/leaderboard', [LoyaltyController::class, 'leaderboard']);
 
+    // Games
     Route::post('/games/{id}/register', [GameController::class, 'register']);
     Route::post('/games/scratch-card/reveal', [GameController::class, 'revealScratchCard']);
     Route::post('/games/wheel/spin', [GameController::class, 'spinWheel']);
@@ -188,59 +192,111 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/games/{id}/vote', [GameController::class, 'vote']);
     Route::get('/games/my-participations', [GameController::class, 'myParticipations']);
 
+    // Reviews
     Route::post('/products/{id}/reviews', [ReviewController::class, 'store']);
     Route::put('/reviews/{id}', [ReviewController::class, 'update']);
     Route::delete('/reviews/{id}', [ReviewController::class, 'destroy']);
 
+    // Wishlist
     Route::get('/wishlist', [WishlistController::class, 'index']);
     Route::post('/wishlist/add', [WishlistController::class, 'add']);
     Route::delete('/wishlist/{productId}', [WishlistController::class, 'remove']);
     Route::post('/wishlist/to-cart', [WishlistController::class, 'moveToCart']);
 
+    // Charity
     Route::get('/charity/donations', [CharityController::class, 'myDonations']);
     Route::post('/charity/donate/voucher', [CharityController::class, 'donateVoucher']);
     Route::post('/charity/donate/product', [CharityController::class, 'donateProduct']);
     Route::get('/charity/impact', [CharityController::class, 'impact']);
 
+    // Stats
     Route::get('/my-stats/consumption', [ProfileController::class, 'consumptionReport']);
     Route::get('/my-stats/favorite-products', [ProfileController::class, 'favoriteProducts']);
     Route::get('/my-stats/monthly', [ProfileController::class, 'monthlyStats']);
 
+    // Notifications
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::put('/notifications/{id}/read', [NotificationController::class, 'markAsRead']);
     Route::put('/notifications/read-all', [NotificationController::class, 'markAllAsRead']);
 
+    // Suggestions
     Route::post('/suggestions', [SuggestionController::class, 'store']);
 
+    // Delegate Shopping
     Route::post('/delegate-shopping', [App\Http\Controllers\DelegateShoppingController::class, 'store']);
     Route::get('/delegate-shopping', [App\Http\Controllers\DelegateShoppingController::class, 'index']);
     Route::get('/delegate-shopping/{id}', [App\Http\Controllers\DelegateShoppingController::class, 'show']);
 
-    // ========================
-    // SELECTIVE SUBSCRIPTIONS (Abonnements sélectifs)
-    // ========================
+    // Selective Subscriptions
     Route::prefix('selective-subscriptions')->group(function () {
-        // Routes utilisateur
         Route::get('/', [SelectiveSubscriptionController::class, 'index']);
         Route::post('/', [SelectiveSubscriptionController::class, 'store']);
         Route::get('/{id}', [SelectiveSubscriptionController::class, 'show']);
         Route::put('/{id}', [SelectiveSubscriptionController::class, 'update']);
-        
-        // Gestion des articles
         Route::post('/{id}/items', [SelectiveSubscriptionController::class, 'addItem']);
         Route::put('/{id}/items/{itemId}', [SelectiveSubscriptionController::class, 'updateItem']);
         Route::patch('/{id}/items/{itemId}/toggle', [SelectiveSubscriptionController::class, 'toggleItem']);
         Route::delete('/{id}/items/{itemId}', [SelectiveSubscriptionController::class, 'removeItem']);
         Route::put('/{id}/sync-items', [SelectiveSubscriptionController::class, 'syncItems']);
-        
-        // Gestion du statut
         Route::post('/{id}/suspend', [SelectiveSubscriptionController::class, 'suspend']);
         Route::post('/{id}/resume', [SelectiveSubscriptionController::class, 'resume']);
         Route::delete('/{id}', [SelectiveSubscriptionController::class, 'cancel']);
-        
-        // Historique
         Route::get('/{id}/history', [SelectiveSubscriptionController::class, 'history']);
     });
+});
+
+
+
+/*
+|--------------------------------------------------------------------------
+| Routes PUBLIQUES — Nos Conseils
+|--------------------------------------------------------------------------
+*/
+Route::prefix('conseils')->name('conseils.')->group(function () {
+ 
+    // Stats des catégories (pour les onglets)
+    Route::get('categories/stats', [PublicConseilController::class, 'categoryStats'])
+         ->name('categories.stats');
+ 
+    // Liste paginée
+    Route::get('/', [PublicConseilController::class, 'index'])
+         ->name('index');
+ 
+    // Détail par slug
+    Route::get('{slug}', [PublicConseilController::class, 'show'])
+         ->name('show');
+ 
+    // Like
+    Route::post('{conseil}/like', [PublicConseilController::class, 'like'])
+         ->name('like');
+});
+ 
+/*
+|--------------------------------------------------------------------------
+| Routes ADMIN — Nos Conseils (middleware auth + admin)
+|--------------------------------------------------------------------------
+*/
+Route::prefix('admin/conseils')
+     ->name('admin.conseils.')
+     ->middleware(['auth:sanctum', 'role:admin'])
+     ->group(function () {
+ 
+    Route::get('/',    [AdminConseilController::class, 'index'])->name('index');
+    Route::post('/',   [AdminConseilController::class, 'store'])->name('store');
+    Route::get('{conseil}',    [AdminConseilController::class, 'show'])->name('show');
+    Route::put('{conseil}',    [AdminConseilController::class, 'update'])->name('update');
+    Route::patch('{conseil}',  [AdminConseilController::class, 'update'])->name('update.patch');
+    Route::delete('{conseil}', [AdminConseilController::class, 'destroy'])->name('destroy');
+ 
+    // Actions rapides
+    Route::patch('{conseil}/toggle-publish',  [AdminConseilController::class, 'togglePublish'])
+         ->name('toggle-publish');
+    Route::patch('{conseil}/toggle-featured', [AdminConseilController::class, 'toggleFeatured'])
+         ->name('toggle-featured');
+ 
+    // Upload médias
+    Route::post('upload-media',  [AdminConseilController::class, 'uploadMedia'])->name('upload-media');
+    Route::delete('delete-media',[AdminConseilController::class, 'deleteMedia'])->name('delete-media');
 });
 
 // ========================
@@ -284,22 +340,23 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::get('/users/{id}/orders', [AdminUserController::class, 'userOrders']);
     Route::post('/users/{id}/loyalty/add', [AdminUserController::class, 'addLoyaltyPoints']);
 
-    // Categories
+    // Categories (Rayons)
     Route::prefix('categories')->group(function () {
         Route::get('/tree', [AdminCategoryController::class, 'tree']);
         Route::get('/', [AdminCategoryController::class, 'index']);
-        Route::get('/{id}', [AdminCategoryController::class, 'show']);
         Route::post('/', [AdminCategoryController::class, 'store']);
+        Route::get('/{id}', [AdminCategoryController::class, 'show']);
         Route::put('/{id}', [AdminCategoryController::class, 'update']);
         Route::delete('/{id}', [AdminCategoryController::class, 'destroy']);
         Route::post('/{id}/toggle', [AdminCategoryController::class, 'toggle']);
         Route::put('/{id}/reorder', [AdminCategoryController::class, 'reorder']);
     });
 
-    // Product Categories
+    // Product Categories — ordre important : routes statiques avant {id}
     Route::prefix('product-categories')->group(function () {
-        Route::get('/', [AdminCategoryController::class, 'productCategories']);
         Route::get('/grouped', [AdminCategoryController::class, 'grouped']);
+        Route::get('/by-rayon/{categoryId}', [AdminCategoryController::class, 'byRayon']); // ← ajouté
+        Route::get('/', [AdminCategoryController::class, 'productCategories']);
         Route::post('/', [AdminCategoryController::class, 'storeProductCategory']);
         Route::put('/{id}', [AdminCategoryController::class, 'updateProductCategory']);
         Route::delete('/{id}', [AdminCategoryController::class, 'destroyProductCategory']);
@@ -345,13 +402,11 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
         Route::post('/{id}/process', [AdminSubscriptionController::class, 'processManually']);
     });
 
-    // ========================
-    // ADMIN SELECTIVE SUBSCRIPTIONS
-    // ========================
+    // Admin Selective Subscriptions
     Route::prefix('selective-subscriptions')->group(function () {
-        Route::get('/', [AdminSelectiveSubscriptionController::class, 'index']);
         Route::get('/upcoming', [AdminSelectiveSubscriptionController::class, 'upcoming']);
         Route::get('/stats', [AdminSelectiveSubscriptionController::class, 'stats']);
+        Route::get('/', [AdminSelectiveSubscriptionController::class, 'index']);
         Route::get('/{id}', [AdminSelectiveSubscriptionController::class, 'show']);
         Route::put('/{id}', [AdminSelectiveSubscriptionController::class, 'update']);
         Route::post('/{id}/suspend', [AdminSelectiveSubscriptionController::class, 'suspend']);
@@ -409,20 +464,15 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
         Route::post('/{id}/toggle', [AdminAdvertisementController::class, 'toggle']);
     });
 
-    // Charity (CORRECTION : Routes complètes)
+    // Charity
     Route::prefix('charity')->group(function () {
-        // Dashboard
         Route::get('/dashboard', [AdminCharityController::class, 'dashboard']);
-        
-        // Donations
+        Route::get('/donations/export', [AdminCharityController::class, 'exportDonations']); // ← avant {id}
         Route::get('/donations', [AdminCharityController::class, 'donations']);
         Route::get('/donations/{id}', [AdminCharityController::class, 'showDonation']);
         Route::put('/donations/{id}/status', [AdminCharityController::class, 'updateStatus']);
         Route::post('/donations/bulk-update', [AdminCharityController::class, 'bulkUpdateStatus']);
         Route::post('/donations/{id}/scratch-card', [AdminCharityController::class, 'triggerScratchCard']);
-        Route::get('/donations/export', [AdminCharityController::class, 'exportDonations']);
-        
-        // Vouchers (Bons alimentaires)
         Route::get('/vouchers', [AdminCharityController::class, 'vouchers']);
         Route::post('/vouchers', [AdminCharityController::class, 'createVoucher']);
         Route::post('/vouchers/{code}/use', [AdminCharityController::class, 'useVoucher']);
@@ -454,7 +504,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
         Route::post('/broadcast', [NotificationController::class, 'broadcast']);
     });
 
-    // Delegate shopping
+    // Delegate Shopping
     Route::prefix('delegate-shopping')->group(function () {
         Route::get('/', [App\Http\Controllers\DelegateShoppingController::class, 'adminIndex']);
         Route::put('/{id}/status', [App\Http\Controllers\DelegateShoppingController::class, 'updateStatus']);
@@ -464,7 +514,7 @@ Route::middleware(['auth:sanctum', 'role:admin'])->prefix('admin')->group(functi
     Route::apiResource('/badges', App\Http\Controllers\Admin\AdminBadgeController::class);
     Route::post('/badges/{id}/award/{userId}', [App\Http\Controllers\Admin\AdminBadgeController::class, 'award']);
 
-    // Newsletters
+    // Newsletter
     Route::prefix('newsletter')->group(function () {
         Route::get('/subscribers', [App\Http\Controllers\Admin\AdminNewsletterController::class, 'index']);
         Route::post('/send', [App\Http\Controllers\Admin\AdminNewsletterController::class, 'send']);
