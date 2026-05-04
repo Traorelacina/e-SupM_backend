@@ -149,12 +149,39 @@ class SubscriptionController extends Controller
         return response()->json(['message' => 'Abonnement réactivé']);
     }
 
+    /**
+     * Annuler l'abonnement (statut "cancelled", garde l'historique)
+     */
     public function cancel(Request $request, int $id): JsonResponse
     {
         $request->validate(['reason' => ['nullable', 'string', 'max:255']]);
         $sub = $request->user()->subscriptions()->findOrFail($id);
         $sub->update(['status' => 'cancelled', 'cancelled_at' => now(), 'cancel_reason' => $request->reason]);
         return response()->json(['message' => 'Abonnement annulé']);
+    }
+
+    /**
+     * Supprimer définitivement l'abonnement (soft delete) – uniquement s'il n'a aucune commande.
+     */
+    public function destroy(Request $request, int $id): JsonResponse
+    {
+        $subscription = $request->user()->subscriptions()->findOrFail($id);
+
+        // Vérifier qu'aucune commande n'est liée à cet abonnement
+        if ($subscription->orders()->exists()) {
+            return response()->json([
+                'message' => 'Impossible de supprimer un abonnement qui contient déjà des commandes. Utilisez l\'annulation à la place.'
+            ], 422);
+        }
+
+        DB::transaction(function () use ($subscription) {
+            // Supprimer les lignes de l'abonnement (cascade manuelle)
+            $subscription->items()->delete();
+            // Soft delete de l'abonnement lui-même
+            $subscription->delete();
+        });
+
+        return response()->json(['message' => 'Abonnement supprimé avec succès.']);
     }
 
     public function history(Request $request, int $id): JsonResponse
